@@ -1,0 +1,11 @@
+---
+title: "PEC 2"
+subtitle: "Análisis de datos ómicos"
+author: "Eduardo A. Sánchez Torres"
+date: "14 de junio de 2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
