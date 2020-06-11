@@ -3,9 +3,263 @@ title: "PEC 2"
 subtitle: "Análisis de datos ómicos"
 author: "Eduardo A. Sánchez Torres"
 date: "14 de junio de 2020"
-output: pdf_document
+header-includes:
+  \usepackage[spanish,es-tabla]{babel}
+output: 
+  pdf_document:
+    number_sections: true
+    fig_caption: yes
+fontsize: 12pt
+csl: elsevier-vancouver.csl
+bibliography: references.bib
+toc: yes
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
+
+\newpage
+
+# Datos para el análisis
+
+```{r}
+library(readr)
+counts = read_delim("datos/counts.csv", 
+    ";", escape_double = FALSE, trim_ws = TRUE)
+```
+
+```{r}
+counts$X1 = gsub("\\..*", "", counts$X1)
+```
+
+
+```{r}
+targets = read_csv("datos/targets.csv")
+```
+
+
+```{r}
+set.seed(73026030)
+df = data.frame()
+groups = unique(targets[,"Group"])
+for (i in 1:nrow(groups)) {
+  targets_group = subset(targets, Group == as.character(groups[i,1]))
+  rows = nrow(targets_group)
+  indexes = sample(1:rows,10,replace = F)
+  targets_samples = targets_group[indexes,"Sample_Name"]
+  df = rbind(df,targets_samples)
+}
+df = df$Sample_Name
+counts_set = counts[,df]
+counts_set = counts_set[,order(colnames(counts_set))]
+row.names(counts_set) = counts$X1
+targets_set = subset(targets, (targets$Sample_Name %in% df))
+targets_set = targets_set[order(targets_set$Sample_Name),]
+```
+
+# Objetivos
+
+# Proceso de análisis
+
+## Preparación de los datos
+
+```{r}
+library(DESeq2)
+dds = DESeqDataSetFromMatrix(countData = counts_set, colData = targets_set,
+                             design = ~ Group)
+```
+
+
+## Preprocesado de los datos
+
+### Filtraje
+
+```{r}
+nrow(dds)
+dds = dds[rowSums(counts(dds)) > 1,]
+nrow(dds)
+```
+
+### Análisis exploratorio y visualización
+
+```{r}
+vsd = vst(dds, blind = FALSE)
+```
+
+```{r}
+assay_vsd = t(assay(vsd))
+rownames(assay_vsd) = vsd$Group
+colnames(assay_vsd) = NULL
+assay_vsd = assay_vsd[order(row.names(assay_vsd)),]
+sampleDists = dist(assay_vsd)
+library(pheatmap)
+sampleDistMatrix = as.matrix(sampleDists)
+pheatmap(sampleDistMatrix,
+         clustering_distance_rows = sampleDists,
+         clustering_distance_cols = sampleDists,
+         fontsize_row = 8, fontsize_col = 8,
+         cluster_rows = F, cluster_cols = F)
+```
+
+```{r}
+plotPCA(vsd, intgroup = "Group")
+```
+
+
+## Identificación de genes diferencialmente expresados
+
+```{r}
+dds = DESeq(dds, parallel =TRUE)
+```
+```{r}
+res_SFI_NIT = results(dds, contrast = c("Group", "SFI", "NIT"), alpha = 0.05,
+                      lfcThreshold = log2(2))
+res_ELI_NIT = results(dds, contrast = c("Group", "ELI", "NIT"), alpha = 0.05,
+                      lfcThreshold = log2(2))
+res_ELI_SFI = results(dds, contrast = c("Group", "ELI", "SFI"), alpha = 0.05,
+                      lfcThreshold = log2(2))
+```
+
+```{r}
+summary(res_SFI_NIT)
+```
+
+```{r}
+summary(res_ELI_NIT)
+```
+
+```{r}
+summary(res_ELI_SFI)
+```
+
+```{r}
+topGene_SFI_NIT = rownames(res_SFI_NIT)[which.min(res_SFI_NIT$padj)]
+plotCounts(dds, topGene_SFI_NIT, "Group", col = "red3", pch = 16)
+
+topGene_ELI_NIT = rownames(res_ELI_NIT)[which.min(res_ELI_NIT$padj)]
+plotCounts(dds, topGene_ELI_NIT, "Group", col = "red3", pch = 16)
+
+topGene_ELI_SFI = rownames(res_ELI_SFI)[which.min(res_ELI_SFI$padj)]
+plotCounts(dds, topGene_ELI_SFI, "Group", col = "red3", pch = 16)
+```
+```{r}
+plotMA(res_SFI_NIT, ylim=c(-25,25), colSig = "red3", colLine = "darksalmon")
+
+plotMA(res_ELI_NIT, ylim=c(-25,25), colSig = "red3", colLine = "darksalmon")
+
+plotMA(res_ELI_SFI, ylim=c(-10,10), colSig = "red3", colLine = "darksalmon")
+```
+
+```{r}
+# topVarGenes <- head(order(rowVars(assay(vsd)), decreasing = TRUE), 20)
+# 
+# mat  <- assay(vsd)[topVarGenes, ]
+# mat  <- mat - rowMeans(mat)
+# colnames(mat) = targets_set$Group
+# mat = mat[,order(colnames(mat))]
+# anno <- as.data.frame(colData(vsd)[,"Group"])
+# pheatmap(mat, cluster_rows = F, cluster_cols = F)
+```
+
+
+
+## Anotación de resultados
+
+```{r}
+library("AnnotationDbi")
+library(EnsDb.Hsapiens.v86)
+
+res_SFI_NIT$symbol = mapIds(EnsDb.Hsapiens.v86,
+                            keys=row.names(res_SFI_NIT),
+                            column="SYMBOL",
+                            keytype="GENEID",
+                            multiVals="first")
+
+res_ELI_NIT$symbol = mapIds(EnsDb.Hsapiens.v86,
+                            keys=row.names(res_ELI_NIT),
+                            column="SYMBOL",
+                            keytype="GENEID",
+                            multiVals="first")
+
+res_ELI_SFI$symbol = mapIds(EnsDb.Hsapiens.v86,
+                            keys=row.names(res_ELI_SFI),
+                            column="SYMBOL",
+                            keytype="GENEID",
+                            multiVals="first")
+```
+## Exportación de resultados
+
+```{r}
+res_SFI_NIT_df = as.data.frame(res_SFI_NIT)
+res_SFI_NIT_df = subset(res_SFI_NIT_df, padj < 0.05 & abs(log2FoldChange) > 1)
+res_SFI_NIT_df = res_SFI_NIT_df[order(res_SFI_NIT_df$padj),]
+
+res_ELI_NIT_df = as.data.frame(res_ELI_NIT)
+res_ELI_NIT_df = subset(res_ELI_NIT_df, padj < 0.05 & abs(log2FoldChange) > 1)
+res_ELI_NIT_df = res_ELI_NIT_df[order(res_ELI_NIT_df$padj),]
+
+res_ELI_SFI_df = as.data.frame(res_ELI_SFI)
+res_ELI_SFI_df = subset(res_ELI_SFI_df, padj < 0.05 & abs(log2FoldChange) > 1)
+res_ELI_SFI_df = res_ELI_SFI_df[order(res_ELI_SFI_df$padj),]
+```
+
+```{r}
+write.csv(res_SFI_NIT_df, file = "resultados/res_SFI_NIT_df.csv", 
+          row.names = T)
+
+write.csv(res_ELI_NIT_df, file = "resultados/res_ELI_NIT_df.csv", 
+          row.names = T)
+
+write.csv(res_ELI_SFI_df, file = "resultados/res_ELI_SFI_df.csv", 
+          row.names = T)
+```
+
+```{r}
+sum(is.na(res_SFI_NIT_df$symbol))
+
+sum(is.na(res_ELI_NIT_df$symbol))
+
+sum(is.na(res_ELI_SFI_df$symbol))
+```
+
+
+## Comparaciones múltiples
+
+```{r}
+res_SFI_NIT_genes = row.names(res_SFI_NIT_df)
+res_ELI_NIT_genes = row.names(res_ELI_NIT_df)
+res_ELI_SFI_genes = row.names(res_ELI_SFI_df)
+
+comb = c(res_SFI_NIT_genes, res_ELI_NIT_genes, res_ELI_SFI_genes)
+
+res_SFI_NIT_genes2 = comb %in% res_SFI_NIT_genes
+res_ELI_NIT_genes2 = comb %in% res_ELI_NIT_genes
+res_ELI_SFI_genes2 = comb %in% res_ELI_SFI_genes
+
+counts_vennDiagram = cbind(res_SFI_NIT_genes2, res_ELI_NIT_genes2,
+                           res_ELI_SFI_genes2)
+
+library(limma)
+
+results_vennDiagram = vennCounts(counts_vennDiagram)
+
+for (i in 1:nrow(results_vennDiagram)) {
+  d = sum(results_vennDiagram[i,-ncol(results_vennDiagram)])
+  if (d == 0) next
+  results_vennDiagram[i,"Counts"] = results_vennDiagram[i,"Counts"] / d
+}
+
+vennDiagram(results_vennDiagram, cex = 0.9, main = "", 
+            names = c("SFI vs NIT", "ELI vs NIT", "ELI vs SFI"),
+            circle.col = c("red", "blue", "green3"))
+```
+
+
+## Análisis de significación biológica
+
+# Resultados y discusión
+
+# Repositorio GitHub y código
+
+# Referencias
