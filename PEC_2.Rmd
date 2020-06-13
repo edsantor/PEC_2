@@ -21,25 +21,49 @@ knitr::opts_chunk$set(echo = TRUE)
 
 \newpage
 
+# Resumen
+
 # Datos para el análisis
 
-```{r}
+## Estudio
+
+El conjunto de datos utilizado en este trabajo pertenece a un estudio de expresión RNA-seq, obtenido del repositorio GTEx, en el cual se realiza un análisis de tiroides en el que se compara tres tipos de infiltración medidos en un total de 292 muestras pertenecientes a tres grupos:
+
+* *Not infiltrated tissues* (NIT): 236 muestras.
+* *Small focal infiltrates* (SFI): 42 muestras.
+* *Extensive lymphoid infiltrates* (ELI): 14 muestras.
+
+Para el análisis realizado aquí, se han seleccionado aleatoriamente 10 muestras de cada grupo. De esta manera, el diseño exprerimental presenta un único factor *Grupo* con tres niveles, NIT, SFI y ELI, disponiendo de 10 réplicas en cada nivel, constituyendo así un total de 30 muestras.
+
+## Tipo de datos de partida
+
+Los datos crudos de partida se basan en una matriz de conteo (*count matrix*) y una tabla asociada de información sobre las muestras (*targets table*). En la matriz de conteo, cada fila representa un gen Ensembl, cada columna una biblioteca de ARN secuenciada (library) correspondiente a cada muestra, y los valores de cada celda son los números brutos de fragmentos que se asignaron de forma única al gen respectivo en cada biblioteca. Por otro lado, la tabla de información de las muestras, presenta tantas filas como muestras, y tantas columnas como items se quieran asociar con cada muestra [@CSAMA2016].
+
+Así se ha partido de una matriz de conteo con 293 columnas (292 muestras + IDs Ensembl) y 56202 filas (genes Ensembl). Y una tabla de informacion de muestras con 292 filas (muestras) y 9 columnas (items), siendo la columna "Group" el factor de este diseño experimental.
+
+## Selección aleatoria de muestras
+
+Para la selección aleatoria de las 10 muestras de cada grupo se ha diseñado el siguiente algoritmo.
+
+En primer lugar 
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
 library(readr)
 counts = read_delim("datos/counts.csv", 
     ";", escape_double = FALSE, trim_ws = TRUE)
 ```
 
-```{r}
+```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
 counts$X1 = gsub("\\..*", "", counts$X1)
 ```
 
 
-```{r}
+```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
 targets = read_csv("datos/targets.csv")
 ```
 
 
-```{r}
+```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
 set.seed(73026030)
 df = data.frame()
 groups = unique(targets[,"Group"])
@@ -64,202 +88,286 @@ targets_set = targets_set[order(targets_set$Sample_Name),]
 
 ## Preparación de los datos
 
-```{r}
-library(DESeq2)
-dds = DESeqDataSetFromMatrix(countData = counts_set, colData = targets_set,
-                             design = ~ Group)
-```
+<!-- ```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'} -->
+<!-- library(DESeq2) -->
+<!-- dds = DESeqDataSetFromMatrix(countData = counts_set, colData = targets_set, -->
+<!--                              design = ~ Group) -->
+<!-- ``` -->
 
 
-## Preprocesado de los datos
+<!-- ## Preprocesado de los datos -->
 
-### Filtraje
+<!-- ### Filtraje -->
 
-```{r}
-nrow(dds)
-dds = dds[rowSums(counts(dds)) > 1,]
-nrow(dds)
-```
+<!-- ```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'} -->
+<!-- nrow(dds) -->
+<!-- dds = dds[rowSums(counts(dds)) > 1,] -->
+<!-- nrow(dds) -->
+<!-- ``` -->
 
-### Análisis exploratorio y visualización
+<!-- ### Análisis exploratorio y visualización -->
 
-```{r}
-vsd = vst(dds, blind = FALSE)
-```
+<!-- ```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'} -->
+<!-- vsd = vst(dds, blind = FALSE) -->
+<!-- ``` -->
 
-```{r}
-assay_vsd = t(assay(vsd))
-rownames(assay_vsd) = vsd$Group
-colnames(assay_vsd) = NULL
-assay_vsd = assay_vsd[order(row.names(assay_vsd)),]
-sampleDists = dist(assay_vsd)
-library(pheatmap)
-sampleDistMatrix = as.matrix(sampleDists)
-pheatmap(sampleDistMatrix,
-         clustering_distance_rows = sampleDists,
-         clustering_distance_cols = sampleDists,
-         fontsize_row = 8, fontsize_col = 8,
-         cluster_rows = F, cluster_cols = F)
-```
+<!-- ```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'} -->
+<!-- assay_vsd = t(assay(vsd)) -->
+<!-- rownames(assay_vsd) = vsd$Group -->
+<!-- colnames(assay_vsd) = NULL -->
+<!-- assay_vsd = assay_vsd[order(row.names(assay_vsd)),] -->
+<!-- sampleDists = dist(assay_vsd) -->
+<!-- library(pheatmap) -->
+<!-- sampleDistMatrix = as.matrix(sampleDists) -->
+<!-- pheatmap(sampleDistMatrix, -->
+<!--          clustering_distance_rows = sampleDists, -->
+<!--          clustering_distance_cols = sampleDists, -->
+<!--          fontsize_row = 8, fontsize_col = 8, -->
+<!--          cluster_rows = T, cluster_cols = T) -->
+<!-- ``` -->
 
-```{r}
-plotPCA(vsd, intgroup = "Group")
-```
+<!-- ```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'} -->
+<!-- plotPCA(vsd, intgroup = "Group") -->
+<!-- ``` -->
 
-
-## Identificación de genes diferencialmente expresados
-
-```{r}
-dds = DESeq(dds, parallel =TRUE)
-```
-```{r}
-res_SFI_NIT = results(dds, contrast = c("Group", "SFI", "NIT"), alpha = 0.05,
-                      lfcThreshold = log2(2))
-res_ELI_NIT = results(dds, contrast = c("Group", "ELI", "NIT"), alpha = 0.05,
-                      lfcThreshold = log2(2))
-res_ELI_SFI = results(dds, contrast = c("Group", "ELI", "SFI"), alpha = 0.05,
-                      lfcThreshold = log2(2))
-```
-
-```{r}
-summary(res_SFI_NIT)
-```
-
-```{r}
-summary(res_ELI_NIT)
-```
-
-```{r}
-summary(res_ELI_SFI)
-```
-
-```{r}
-topGene_SFI_NIT = rownames(res_SFI_NIT)[which.min(res_SFI_NIT$padj)]
-plotCounts(dds, topGene_SFI_NIT, "Group", col = "red3", pch = 16)
-
-topGene_ELI_NIT = rownames(res_ELI_NIT)[which.min(res_ELI_NIT$padj)]
-plotCounts(dds, topGene_ELI_NIT, "Group", col = "red3", pch = 16)
-
-topGene_ELI_SFI = rownames(res_ELI_SFI)[which.min(res_ELI_SFI$padj)]
-plotCounts(dds, topGene_ELI_SFI, "Group", col = "red3", pch = 16)
-```
-```{r}
-plotMA(res_SFI_NIT, ylim=c(-25,25), colSig = "red3", colLine = "darksalmon")
-
-plotMA(res_ELI_NIT, ylim=c(-25,25), colSig = "red3", colLine = "darksalmon")
-
-plotMA(res_ELI_SFI, ylim=c(-10,10), colSig = "red3", colLine = "darksalmon")
-```
-
-```{r}
-# topVarGenes <- head(order(rowVars(assay(vsd)), decreasing = TRUE), 20)
-# 
-# mat  <- assay(vsd)[topVarGenes, ]
-# mat  <- mat - rowMeans(mat)
-# colnames(mat) = targets_set$Group
-# mat = mat[,order(colnames(mat))]
-# anno <- as.data.frame(colData(vsd)[,"Group"])
-# pheatmap(mat, cluster_rows = F, cluster_cols = F)
-```
+<!-- ```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'} -->
+<!-- library(ggplot2) -->
+<!-- mdsData <- data.frame(cmdscale(sampleDistMatrix)) -->
+<!-- mds <- cbind(mdsData, as.data.frame(colData(vsd))) -->
+<!-- ggplot(mds, aes(X1,X2,color=Group)) + geom_point(size=3) -->
+<!-- ``` -->
 
 
+<!-- ## Identificación de genes diferencialmente expresados -->
 
-## Anotación de resultados
+<!-- ```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'} -->
+<!-- dds = DESeq(dds, parallel =TRUE) -->
+<!-- ``` -->
+<!-- ```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'} -->
+<!-- res_SFI_NIT = results(dds, contrast = c("Group", "SFI", "NIT"), alpha = 0.05, -->
+<!--                       lfcThreshold = log2(2)) -->
+<!-- res_ELI_NIT = results(dds, contrast = c("Group", "ELI", "NIT"), alpha = 0.05, -->
+<!--                       lfcThreshold = log2(2)) -->
+<!-- res_ELI_SFI = results(dds, contrast = c("Group", "ELI", "SFI"), alpha = 0.05, -->
+<!--                       lfcThreshold = log2(2)) -->
+<!-- ``` -->
 
-```{r}
-library("AnnotationDbi")
-library(EnsDb.Hsapiens.v86)
+<!-- ```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'} -->
+<!-- summary(res_SFI_NIT) -->
+<!-- ``` -->
 
-res_SFI_NIT$symbol = mapIds(EnsDb.Hsapiens.v86,
-                            keys=row.names(res_SFI_NIT),
-                            column="SYMBOL",
-                            keytype="GENEID",
-                            multiVals="first")
+<!-- ```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'} -->
+<!-- summary(res_ELI_NIT) -->
+<!-- ``` -->
 
-res_ELI_NIT$symbol = mapIds(EnsDb.Hsapiens.v86,
-                            keys=row.names(res_ELI_NIT),
-                            column="SYMBOL",
-                            keytype="GENEID",
-                            multiVals="first")
+<!-- ```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'} -->
+<!-- summary(res_ELI_SFI) -->
+<!-- ``` -->
 
-res_ELI_SFI$symbol = mapIds(EnsDb.Hsapiens.v86,
-                            keys=row.names(res_ELI_SFI),
-                            column="SYMBOL",
-                            keytype="GENEID",
-                            multiVals="first")
-```
-## Exportación de resultados
+<!-- ```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'} -->
+<!-- topGene_SFI_NIT = rownames(res_SFI_NIT)[which.min(res_SFI_NIT$padj)] -->
+<!-- plotCounts(dds, topGene_SFI_NIT, "Group", col = "red3", pch = 16) -->
 
-```{r}
-res_SFI_NIT_df = as.data.frame(res_SFI_NIT)
-res_SFI_NIT_df = subset(res_SFI_NIT_df, padj < 0.05 & abs(log2FoldChange) > 1)
-res_SFI_NIT_df = res_SFI_NIT_df[order(res_SFI_NIT_df$padj),]
+<!-- topGene_ELI_NIT = rownames(res_ELI_NIT)[which.min(res_ELI_NIT$padj)] -->
+<!-- plotCounts(dds, topGene_ELI_NIT, "Group", col = "red3", pch = 16) -->
 
-res_ELI_NIT_df = as.data.frame(res_ELI_NIT)
-res_ELI_NIT_df = subset(res_ELI_NIT_df, padj < 0.05 & abs(log2FoldChange) > 1)
-res_ELI_NIT_df = res_ELI_NIT_df[order(res_ELI_NIT_df$padj),]
+<!-- topGene_ELI_SFI = rownames(res_ELI_SFI)[which.min(res_ELI_SFI$padj)] -->
+<!-- plotCounts(dds, topGene_ELI_SFI, "Group", col = "red3", pch = 16) -->
+<!-- ``` -->
+<!-- ```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'} -->
+<!-- plotMA(res_SFI_NIT, ylim=c(-25,25), colSig = "red3",  -->
+<!--        colLine = rgb(1,0,0,.5)) -->
 
-res_ELI_SFI_df = as.data.frame(res_ELI_SFI)
-res_ELI_SFI_df = subset(res_ELI_SFI_df, padj < 0.05 & abs(log2FoldChange) > 1)
-res_ELI_SFI_df = res_ELI_SFI_df[order(res_ELI_SFI_df$padj),]
-```
+<!-- plotMA(res_ELI_NIT, ylim=c(-25,25), colSig = "red3",  -->
+<!--        colLine = rgb(1,0,0,.5)) -->
 
-```{r}
-write.csv(res_SFI_NIT_df, file = "resultados/res_SFI_NIT_df.csv", 
-          row.names = T)
-
-write.csv(res_ELI_NIT_df, file = "resultados/res_ELI_NIT_df.csv", 
-          row.names = T)
-
-write.csv(res_ELI_SFI_df, file = "resultados/res_ELI_SFI_df.csv", 
-          row.names = T)
-```
-
-```{r}
-sum(is.na(res_SFI_NIT_df$symbol))
-
-sum(is.na(res_ELI_NIT_df$symbol))
-
-sum(is.na(res_ELI_SFI_df$symbol))
-```
+<!-- plotMA(res_ELI_SFI, ylim=c(-10,10), colSig = "red3",  -->
+<!--        colLine = rgb(1,0,0,.5)) -->
+<!-- ``` -->
 
 
-## Comparaciones múltiples
+<!-- ## Anotación de resultados -->
 
-```{r}
-res_SFI_NIT_genes = row.names(res_SFI_NIT_df)
-res_ELI_NIT_genes = row.names(res_ELI_NIT_df)
-res_ELI_SFI_genes = row.names(res_ELI_SFI_df)
+<!-- ```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'} -->
+<!-- library("AnnotationDbi") -->
+<!-- library(EnsDb.Hsapiens.v86) -->
 
-comb = c(res_SFI_NIT_genes, res_ELI_NIT_genes, res_ELI_SFI_genes)
+<!-- res_SFI_NIT$symbol = mapIds(EnsDb.Hsapiens.v86, -->
+<!--                             keys=row.names(res_SFI_NIT), -->
+<!--                             column="SYMBOL", -->
+<!--                             keytype="GENEID", -->
+<!--                             multiVals="first") -->
+<!-- res_SFI_NIT$entrezid = mapIds(EnsDb.Hsapiens.v86, -->
+<!--                             keys=row.names(res_SFI_NIT), -->
+<!--                             column="ENTREZID", -->
+<!--                             keytype="GENEID", -->
+<!--                             multiVals="first") -->
 
-res_SFI_NIT_genes2 = comb %in% res_SFI_NIT_genes
-res_ELI_NIT_genes2 = comb %in% res_ELI_NIT_genes
-res_ELI_SFI_genes2 = comb %in% res_ELI_SFI_genes
+<!-- res_ELI_NIT$symbol = mapIds(EnsDb.Hsapiens.v86, -->
+<!--                             keys=row.names(res_ELI_NIT), -->
+<!--                             column="SYMBOL", -->
+<!--                             keytype="GENEID", -->
+<!--                             multiVals="first") -->
+<!-- res_ELI_NIT$entrezid = mapIds(EnsDb.Hsapiens.v86, -->
+<!--                             keys=row.names(res_ELI_NIT), -->
+<!--                             column="ENTREZID", -->
+<!--                             keytype="GENEID", -->
+<!--                             multiVals="first") -->
 
-counts_vennDiagram = cbind(res_SFI_NIT_genes2, res_ELI_NIT_genes2,
-                           res_ELI_SFI_genes2)
-
-library(limma)
-
-results_vennDiagram = vennCounts(counts_vennDiagram)
-
-for (i in 1:nrow(results_vennDiagram)) {
-  d = sum(results_vennDiagram[i,-ncol(results_vennDiagram)])
-  if (d == 0) next
-  results_vennDiagram[i,"Counts"] = results_vennDiagram[i,"Counts"] / d
-}
-
-vennDiagram(results_vennDiagram, cex = 0.9, main = "", 
-            names = c("SFI vs NIT", "ELI vs NIT", "ELI vs SFI"),
-            circle.col = c("red", "blue", "green3"))
-```
+<!-- res_ELI_SFI$symbol = mapIds(EnsDb.Hsapiens.v86, -->
+<!--                             keys=row.names(res_ELI_SFI), -->
+<!--                             column="SYMBOL", -->
+<!--                             keytype="GENEID", -->
+<!--                             multiVals="first") -->
+<!-- res_ELI_SFI$entrezid = mapIds(EnsDb.Hsapiens.v86, -->
+<!--                             keys=row.names(res_ELI_SFI), -->
+<!--                             column="ENTREZID", -->
+<!--                             keytype="GENEID", -->
+<!--                             multiVals="first") -->
+<!-- ``` -->
 
 
-## Análisis de significación biológica
+<!-- ```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'} -->
+<!-- topVarGenes = head(order(rowVars(assay(vsd)), decreasing = TRUE), 20) -->
+
+<!-- mat  = assay(vsd)[topVarGenes, ] -->
+<!-- mat  = mat - rowMeans(mat) -->
+<!-- colnames(mat) = targets_set$ShortName -->
+<!-- row.names(mat) = mapIds(EnsDb.Hsapiens.v86, -->
+<!--                         keys=row.names(mat), -->
+<!--                         column="SYMBOL", -->
+<!--                         keytype="GENEID", -->
+<!--                         multiVals="first")  -->
+<!-- anno = as.data.frame(colData(vsd)[,"Group"]) -->
+<!-- row.names(anno) = colnames(mat) -->
+<!-- colnames(anno) = "Group" -->
+<!-- pheatmap(mat, annotation_col = anno, cluster_rows = T, cluster_cols = T, -->
+<!--          fontsize_row = 8, fontsize_col = 8) -->
+<!-- ``` -->
+
+
+<!-- ```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'} -->
+<!-- res_SFI_NIT_df = as.data.frame(res_SFI_NIT) -->
+<!-- res_SFI_NIT_df = subset(res_SFI_NIT_df, padj < 0.05  -->
+<!--                         & abs(log2FoldChange) > 1) -->
+<!-- res_SFI_NIT_df = res_SFI_NIT_df[order(res_SFI_NIT_df$padj),] -->
+
+<!-- res_ELI_NIT_df = as.data.frame(res_ELI_NIT) -->
+<!-- res_ELI_NIT_df = subset(res_ELI_NIT_df, padj < 0.05  -->
+<!--                         & abs(log2FoldChange) > 1) -->
+<!-- res_ELI_NIT_df = res_ELI_NIT_df[order(res_ELI_NIT_df$padj),] -->
+
+<!-- res_ELI_SFI_df = as.data.frame(res_ELI_SFI) -->
+<!-- res_ELI_SFI_df = subset(res_ELI_SFI_df, padj < 0.05  -->
+<!--                         & abs(log2FoldChange) > 1) -->
+<!-- res_ELI_SFI_df = res_ELI_SFI_df[order(res_ELI_SFI_df$padj),] -->
+<!-- ``` -->
+
+<!-- ```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'} -->
+<!-- write.csv(res_SFI_NIT_df, file = "resultados/res_SFI_NIT_df.csv",  -->
+<!--           row.names = T) -->
+
+<!-- write.csv(res_ELI_NIT_df, file = "resultados/res_ELI_NIT_df.csv",  -->
+<!--           row.names = T) -->
+
+<!-- write.csv(res_ELI_SFI_df, file = "resultados/res_ELI_SFI_df.csv",  -->
+<!--           row.names = T) -->
+<!-- ``` -->
+
+<!-- ```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'} -->
+<!-- sum(is.na(res_SFI_NIT_df$symbol)) -->
+<!-- sum(is.na(res_SFI_NIT_df$entrezid)) -->
+
+<!-- sum(is.na(res_ELI_NIT_df$symbol)) -->
+<!-- sum(is.na(res_ELI_NIT_df$entrezid)) -->
+
+<!-- sum(is.na(res_ELI_SFI_df$symbol)) -->
+<!-- sum(is.na(res_ELI_SFI_df$entrezid)) -->
+<!-- ``` -->
+
+
+<!-- ## Búsqueda de patrones de expresión y agrupación de muestras -->
+
+<!-- ```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'} -->
+<!-- res_SFI_NIT_genes = row.names(res_SFI_NIT_df) -->
+<!-- res_ELI_NIT_genes = row.names(res_ELI_NIT_df) -->
+<!-- res_ELI_SFI_genes = row.names(res_ELI_SFI_df) -->
+
+<!-- comb = c(res_SFI_NIT_genes, res_ELI_NIT_genes, res_ELI_SFI_genes) -->
+
+<!-- res_SFI_NIT_genes2 = comb %in% res_SFI_NIT_genes -->
+<!-- res_ELI_NIT_genes2 = comb %in% res_ELI_NIT_genes -->
+<!-- res_ELI_SFI_genes2 = comb %in% res_ELI_SFI_genes -->
+
+<!-- counts_vennDiagram = cbind(res_SFI_NIT_genes2, res_ELI_NIT_genes2, -->
+<!--                            res_ELI_SFI_genes2) -->
+
+<!-- library(limma) -->
+
+<!-- results_vennDiagram = vennCounts(counts_vennDiagram) -->
+
+<!-- for (i in 1:nrow(results_vennDiagram)) { -->
+<!--   d = sum(results_vennDiagram[i,-ncol(results_vennDiagram)]) -->
+<!--   if (d == 0) next -->
+<!--   results_vennDiagram[i,"Counts"] = results_vennDiagram[i,"Counts"] / d -->
+<!-- } -->
+
+<!-- vennDiagram(results_vennDiagram, cex = 0.9, main = "",  -->
+<!--             names = c("SFI vs NIT", "ELI vs NIT", "ELI vs SFI"), -->
+<!--             circle.col = c("red", "blue", "green3")) -->
+<!-- ``` -->
+
+
+<!-- ## Análisis de significación biológica -->
+
+<!-- ```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'} -->
+<!-- res_SFI_NIT_df = as.data.frame(res_SFI_NIT) -->
+<!-- res_SFI_NIT_df = subset(res_SFI_NIT_df, padj < 0.15) -->
+
+<!-- res_ELI_NIT_df = as.data.frame(res_ELI_NIT) -->
+<!-- res_ELI_NIT_df = subset(res_ELI_NIT_df, padj < 0.15) -->
+
+<!-- res_ELI_SFI_df = as.data.frame(res_ELI_SFI) -->
+<!-- res_ELI_SFI_df = subset(res_ELI_SFI_df, padj < 0.15) -->
+
+<!-- library(clusterProfiler) -->
+
+<!-- ego_ELI_NIT = enrichGO(res_ELI_NIT_df$entrezid, -->
+<!--                        OrgDb = "org.Hs.eg.db", -->
+<!--                        ont = "ALL", -->
+<!--                        pAdjustMethod = "BH", -->
+<!--                        pvalueCutoff  = 0.01, -->
+<!--                        qvalueCutoff  = 0.05, -->
+<!--                        readable = TRUE) -->
+
+<!-- ego_ELI_SFI = enrichGO(res_ELI_SFI_df$entrezid, -->
+<!--                        OrgDb = "org.Hs.eg.db", -->
+<!--                        ont = "ALL", -->
+<!--                        pAdjustMethod = "BH", -->
+<!--                        pvalueCutoff  = 0.01, -->
+<!--                        qvalueCutoff  = 0.05, -->
+<!--                        readable = TRUE) -->
+
+
+
+<!-- ``` -->
+
+
+<!-- ```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'} -->
+<!-- ego_ELI_NIT = as.data.frame(ego_ELI_NIT) -->
+<!-- write.csv(ego_ELI_NIT, file = "./resultados/ego_ELI_NIT.csv",  -->
+<!--           row.names = F) -->
+
+<!-- ego_ELI_SFI = as.data.frame(ego_ELI_SFI) -->
+<!-- write.csv(ego_ELI_SFI, file = "./resultados/ego_ELI_SFI.csv",  -->
+<!--           row.names = F) -->
+<!-- ``` -->
+
 
 # Resultados y discusión
 
 # Repositorio GitHub y código
+
+\newpage
 
 # Referencias
