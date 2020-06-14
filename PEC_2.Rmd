@@ -23,6 +23,8 @@ knitr::opts_chunk$set(echo = TRUE)
 
 # Resumen
 
+\newpage
+
 # Datos para el análisis
 
 ## Estudio
@@ -45,328 +47,702 @@ Así se ha partido de una matriz de conteo con 293 columnas (292 muestras + IDs 
 
 Para la selección aleatoria de las 10 muestras de cada grupo se ha diseñado el siguiente algoritmo.
 
-En primer lugar 
+En primer lugar se ha importado la matriz de conteo `counts`:
 
-```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+```{r echo=TRUE, message=FALSE, warning=FALSE, results='hide'}
 library(readr)
 counts = read_delim("datos/counts.csv", 
     ";", escape_double = FALSE, trim_ws = TRUE)
 ```
 
-```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+Con la finalidad de evitar problemas en el proceso de anotación, a cada ID de Ensembl, se le debe retirar el punto y el número que le sigue, que se corresponden con la versión de Ensembl. De este modo se ha utilizado la función `gsub()`:
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, results='hide'}
 counts$X1 = gsub("\\..*", "", counts$X1)
 ```
 
+Posteriormente, se ha importado la tabla de información de las muestras `targets`:
 
-```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+```{r echo=TRUE, message=FALSE, warning=FALSE, results='hide'}
 targets = read_csv("datos/targets.csv")
 ```
 
+Importadoos los data frames `counts` y `targets` se ha aplicado el siguiente script para la selección aleatoria de 10 muestras de cada grupo (30 en total):
 
-```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+```{r echo=TRUE, message=FALSE, warning=FALSE, results='hide'}
+# Establece una semilla para asegurar la repetitividad aleatoria.
 set.seed(73026030)
+# Crea un data frame vacío que contendrá los nombres de las 30 muestras.
 df = data.frame()
+# Almacena en groups los diferentes grupos de la columna Group del
+# data frame targets.
 groups = unique(targets[,"Group"])
+# Bucle for que se ejecuta tantas veces como grupos haya en groups.
 for (i in 1:nrow(groups)) {
+  # Crea un data frame con únicamente las filas correspondientes al 
+  # grupo i.
   targets_group = subset(targets, Group == as.character(groups[i,1]))
+  # Cuenta las filas del data frame targets_groups, es decir, el número 
+  # de muestras del grupo i.
   rows = nrow(targets_group)
+  # Selecciona aleatoriamente 10 índices de fila sin repetición entre 
+  # todas las filas de targets_groups del grupo i.
   indexes = sample(1:rows,10,replace = F)
+  # Crea el data frame targets_samples que contiene los nombres de las 
+  # muestras correspondientes a los 10 índices aleatorios seleccionados.
   targets_samples = targets_group[indexes,"Sample_Name"]
+  # En cada iteración del bucle for, almacena en df los nombres de las 10
+  # muestras de cada grupo que se han seleccionado aleatoriamnte.
   df = rbind(df,targets_samples)
 }
+# Crea el vector de caracteres df a partir del data frame df con los 
+# nombres de las 30 muestras seleccionadas.
 df = df$Sample_Name
+# Crea la matriz de conteo de las 30 muestras, indenxando las columnas de 
+# counts con el vector df. 
 counts_set = counts[,df]
+# Ordena alfanuméricamente las columnas de la matriz de conteo counts_set.
 counts_set = counts_set[,order(colnames(counts_set))]
+# Establece que los nombres de fila de counts_set sean los ID de Ensembl 
+# de counts.
 row.names(counts_set) = counts$X1
+# Crea la tabla de información de las muestras targets_set con únicamente 
+# las filas correspondientes a las muestras seleccionadas en counts_set.
 targets_set = subset(targets, (targets$Sample_Name %in% df))
+# Ordena alfanuméricamente las filas de targets_set en función de los 
+# nombres de la columna Sample_Name para que éstas se correspondan con 
+# el orden de las columnas de counts_set.
 targets_set = targets_set[order(targets_set$Sample_Name),]
 ```
 
+De esta manera se generó la matriz de conteo `counts_set` (56202 x 30) y la tabla de información de las muestras `targets_set` (30 x 9) utilizadas para desarrollar los objetivos de este trabajo.
+
+Nótese, que es crítico y fácil de pasar por alto, que el orden de las columnas de la matriz de conteo tiene que ser el mismo que el orden de las filas de la tabla de información, para que la asociación de `counts_set` y `targets_set` sea correcta [@Love2020].
+
+\newpage
+
 # Objetivos
+
+El objetivo general de este trabajo es identificar qué genes están expresados diferencialmente así como su significación biológica, a partir de datos de un estudio de tiroides RNA-seq que comparaba tres tipos de infiltración: *Not infiltrated tissues* (NIT), *Small focal infiltrates* (SFI) y *Extensive lymphoid infiltrates* (ELI).
+
+Para la consecución del objetivo general se han planteado los siguientes objetivos específicos:
+
+* Determinar qué genes están diferencialmente expresados en SFI y ELI frente al grupo control NIT.
+* Realizar la comparación SFI-ELI para identificar su expresión diferencial.
+* Comparar los tres contrastes (SFI-NIT, ELI-NIT y SFI-ELI) para observar patrones de expresión y determinar si existen genes expresados diferencialmente que sean comunes entre comparaciones.
+* Aplicar un análisis de enriquecimiento a los genes expresados diferencialmente en cada contraste.  
+
+\newpage
 
 # Proceso de análisis
 
+El proceso de análisis de datos RNA-seq se ha llevado a cabo utilizando el lenguaje R versión 4.0.1 a través de los paquetes de Bioconductor versión 3.11. Concretamente se ha utilizado el paquete `DESeq2`. En este apartado se detallan cada uno de los pasos seguidos en dicho análisis.
+
+
 ## Preparación de los datos
 
-<!-- ```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'} -->
-<!-- library(DESeq2) -->
-<!-- dds = DESeqDataSetFromMatrix(countData = counts_set, colData = targets_set, -->
-<!--                              design = ~ Group) -->
-<!-- ``` -->
-
-
-<!-- ## Preprocesado de los datos -->
-
-<!-- ### Filtraje -->
-
-<!-- ```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'} -->
-<!-- nrow(dds) -->
-<!-- dds = dds[rowSums(counts(dds)) > 1,] -->
-<!-- nrow(dds) -->
-<!-- ``` -->
-
-<!-- ### Análisis exploratorio y visualización -->
-
-<!-- ```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'} -->
-<!-- vsd = vst(dds, blind = FALSE) -->
-<!-- ``` -->
-
-<!-- ```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'} -->
-<!-- assay_vsd = t(assay(vsd)) -->
-<!-- rownames(assay_vsd) = vsd$Group -->
-<!-- colnames(assay_vsd) = NULL -->
-<!-- assay_vsd = assay_vsd[order(row.names(assay_vsd)),] -->
-<!-- sampleDists = dist(assay_vsd) -->
-<!-- library(pheatmap) -->
-<!-- sampleDistMatrix = as.matrix(sampleDists) -->
-<!-- pheatmap(sampleDistMatrix, -->
-<!--          clustering_distance_rows = sampleDists, -->
-<!--          clustering_distance_cols = sampleDists, -->
-<!--          fontsize_row = 8, fontsize_col = 8, -->
-<!--          cluster_rows = T, cluster_cols = T) -->
-<!-- ``` -->
-
-<!-- ```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'} -->
-<!-- plotPCA(vsd, intgroup = "Group") -->
-<!-- ``` -->
-
-<!-- ```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'} -->
-<!-- library(ggplot2) -->
-<!-- mdsData <- data.frame(cmdscale(sampleDistMatrix)) -->
-<!-- mds <- cbind(mdsData, as.data.frame(colData(vsd))) -->
-<!-- ggplot(mds, aes(X1,X2,color=Group)) + geom_point(size=3) -->
-<!-- ``` -->
-
-
-<!-- ## Identificación de genes diferencialmente expresados -->
-
-<!-- ```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'} -->
-<!-- dds = DESeq(dds, parallel =TRUE) -->
-<!-- ``` -->
-<!-- ```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'} -->
-<!-- res_SFI_NIT = results(dds, contrast = c("Group", "SFI", "NIT"), alpha = 0.05, -->
-<!--                       lfcThreshold = log2(2)) -->
-<!-- res_ELI_NIT = results(dds, contrast = c("Group", "ELI", "NIT"), alpha = 0.05, -->
-<!--                       lfcThreshold = log2(2)) -->
-<!-- res_ELI_SFI = results(dds, contrast = c("Group", "ELI", "SFI"), alpha = 0.05, -->
-<!--                       lfcThreshold = log2(2)) -->
-<!-- ``` -->
-
-<!-- ```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'} -->
-<!-- summary(res_SFI_NIT) -->
-<!-- ``` -->
-
-<!-- ```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'} -->
-<!-- summary(res_ELI_NIT) -->
-<!-- ``` -->
-
-<!-- ```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'} -->
-<!-- summary(res_ELI_SFI) -->
-<!-- ``` -->
-
-<!-- ```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'} -->
-<!-- topGene_SFI_NIT = rownames(res_SFI_NIT)[which.min(res_SFI_NIT$padj)] -->
-<!-- plotCounts(dds, topGene_SFI_NIT, "Group", col = "red3", pch = 16) -->
-
-<!-- topGene_ELI_NIT = rownames(res_ELI_NIT)[which.min(res_ELI_NIT$padj)] -->
-<!-- plotCounts(dds, topGene_ELI_NIT, "Group", col = "red3", pch = 16) -->
-
-<!-- topGene_ELI_SFI = rownames(res_ELI_SFI)[which.min(res_ELI_SFI$padj)] -->
-<!-- plotCounts(dds, topGene_ELI_SFI, "Group", col = "red3", pch = 16) -->
-<!-- ``` -->
-<!-- ```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'} -->
-<!-- plotMA(res_SFI_NIT, ylim=c(-25,25), colSig = "red3",  -->
-<!--        colLine = rgb(1,0,0,.5)) -->
-
-<!-- plotMA(res_ELI_NIT, ylim=c(-25,25), colSig = "red3",  -->
-<!--        colLine = rgb(1,0,0,.5)) -->
-
-<!-- plotMA(res_ELI_SFI, ylim=c(-10,10), colSig = "red3",  -->
-<!--        colLine = rgb(1,0,0,.5)) -->
-<!-- ``` -->
-
-
-<!-- ## Anotación de resultados -->
-
-<!-- ```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'} -->
-<!-- library("AnnotationDbi") -->
-<!-- library(EnsDb.Hsapiens.v86) -->
-
-<!-- res_SFI_NIT$symbol = mapIds(EnsDb.Hsapiens.v86, -->
-<!--                             keys=row.names(res_SFI_NIT), -->
-<!--                             column="SYMBOL", -->
-<!--                             keytype="GENEID", -->
-<!--                             multiVals="first") -->
-<!-- res_SFI_NIT$entrezid = mapIds(EnsDb.Hsapiens.v86, -->
-<!--                             keys=row.names(res_SFI_NIT), -->
-<!--                             column="ENTREZID", -->
-<!--                             keytype="GENEID", -->
-<!--                             multiVals="first") -->
-
-<!-- res_ELI_NIT$symbol = mapIds(EnsDb.Hsapiens.v86, -->
-<!--                             keys=row.names(res_ELI_NIT), -->
-<!--                             column="SYMBOL", -->
-<!--                             keytype="GENEID", -->
-<!--                             multiVals="first") -->
-<!-- res_ELI_NIT$entrezid = mapIds(EnsDb.Hsapiens.v86, -->
-<!--                             keys=row.names(res_ELI_NIT), -->
-<!--                             column="ENTREZID", -->
-<!--                             keytype="GENEID", -->
-<!--                             multiVals="first") -->
-
-<!-- res_ELI_SFI$symbol = mapIds(EnsDb.Hsapiens.v86, -->
-<!--                             keys=row.names(res_ELI_SFI), -->
-<!--                             column="SYMBOL", -->
-<!--                             keytype="GENEID", -->
-<!--                             multiVals="first") -->
-<!-- res_ELI_SFI$entrezid = mapIds(EnsDb.Hsapiens.v86, -->
-<!--                             keys=row.names(res_ELI_SFI), -->
-<!--                             column="ENTREZID", -->
-<!--                             keytype="GENEID", -->
-<!--                             multiVals="first") -->
-<!-- ``` -->
-
-
-<!-- ```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'} -->
-<!-- topVarGenes = head(order(rowVars(assay(vsd)), decreasing = TRUE), 20) -->
-
-<!-- mat  = assay(vsd)[topVarGenes, ] -->
-<!-- mat  = mat - rowMeans(mat) -->
-<!-- colnames(mat) = targets_set$ShortName -->
-<!-- row.names(mat) = mapIds(EnsDb.Hsapiens.v86, -->
-<!--                         keys=row.names(mat), -->
-<!--                         column="SYMBOL", -->
-<!--                         keytype="GENEID", -->
-<!--                         multiVals="first")  -->
-<!-- anno = as.data.frame(colData(vsd)[,"Group"]) -->
-<!-- row.names(anno) = colnames(mat) -->
-<!-- colnames(anno) = "Group" -->
-<!-- pheatmap(mat, annotation_col = anno, cluster_rows = T, cluster_cols = T, -->
-<!--          fontsize_row = 8, fontsize_col = 8) -->
-<!-- ``` -->
-
-
-<!-- ```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'} -->
-<!-- res_SFI_NIT_df = as.data.frame(res_SFI_NIT) -->
-<!-- res_SFI_NIT_df = subset(res_SFI_NIT_df, padj < 0.05  -->
-<!--                         & abs(log2FoldChange) > 1) -->
-<!-- res_SFI_NIT_df = res_SFI_NIT_df[order(res_SFI_NIT_df$padj),] -->
-
-<!-- res_ELI_NIT_df = as.data.frame(res_ELI_NIT) -->
-<!-- res_ELI_NIT_df = subset(res_ELI_NIT_df, padj < 0.05  -->
-<!--                         & abs(log2FoldChange) > 1) -->
-<!-- res_ELI_NIT_df = res_ELI_NIT_df[order(res_ELI_NIT_df$padj),] -->
-
-<!-- res_ELI_SFI_df = as.data.frame(res_ELI_SFI) -->
-<!-- res_ELI_SFI_df = subset(res_ELI_SFI_df, padj < 0.05  -->
-<!--                         & abs(log2FoldChange) > 1) -->
-<!-- res_ELI_SFI_df = res_ELI_SFI_df[order(res_ELI_SFI_df$padj),] -->
-<!-- ``` -->
-
-<!-- ```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'} -->
-<!-- write.csv(res_SFI_NIT_df, file = "resultados/res_SFI_NIT_df.csv",  -->
-<!--           row.names = T) -->
-
-<!-- write.csv(res_ELI_NIT_df, file = "resultados/res_ELI_NIT_df.csv",  -->
-<!--           row.names = T) -->
-
-<!-- write.csv(res_ELI_SFI_df, file = "resultados/res_ELI_SFI_df.csv",  -->
-<!--           row.names = T) -->
-<!-- ``` -->
-
-<!-- ```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'} -->
-<!-- sum(is.na(res_SFI_NIT_df$symbol)) -->
-<!-- sum(is.na(res_SFI_NIT_df$entrezid)) -->
-
-<!-- sum(is.na(res_ELI_NIT_df$symbol)) -->
-<!-- sum(is.na(res_ELI_NIT_df$entrezid)) -->
-
-<!-- sum(is.na(res_ELI_SFI_df$symbol)) -->
-<!-- sum(is.na(res_ELI_SFI_df$entrezid)) -->
-<!-- ``` -->
-
-
-<!-- ## Búsqueda de patrones de expresión y agrupación de muestras -->
-
-<!-- ```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'} -->
-<!-- res_SFI_NIT_genes = row.names(res_SFI_NIT_df) -->
-<!-- res_ELI_NIT_genes = row.names(res_ELI_NIT_df) -->
-<!-- res_ELI_SFI_genes = row.names(res_ELI_SFI_df) -->
-
-<!-- comb = c(res_SFI_NIT_genes, res_ELI_NIT_genes, res_ELI_SFI_genes) -->
-
-<!-- res_SFI_NIT_genes2 = comb %in% res_SFI_NIT_genes -->
-<!-- res_ELI_NIT_genes2 = comb %in% res_ELI_NIT_genes -->
-<!-- res_ELI_SFI_genes2 = comb %in% res_ELI_SFI_genes -->
-
-<!-- counts_vennDiagram = cbind(res_SFI_NIT_genes2, res_ELI_NIT_genes2, -->
-<!--                            res_ELI_SFI_genes2) -->
-
-<!-- library(limma) -->
-
-<!-- results_vennDiagram = vennCounts(counts_vennDiagram) -->
-
-<!-- for (i in 1:nrow(results_vennDiagram)) { -->
-<!--   d = sum(results_vennDiagram[i,-ncol(results_vennDiagram)]) -->
-<!--   if (d == 0) next -->
-<!--   results_vennDiagram[i,"Counts"] = results_vennDiagram[i,"Counts"] / d -->
-<!-- } -->
-
-<!-- vennDiagram(results_vennDiagram, cex = 0.9, main = "",  -->
-<!--             names = c("SFI vs NIT", "ELI vs NIT", "ELI vs SFI"), -->
-<!--             circle.col = c("red", "blue", "green3")) -->
-<!-- ``` -->
-
-
-<!-- ## Análisis de significación biológica -->
-
-<!-- ```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'} -->
-<!-- res_SFI_NIT_df = as.data.frame(res_SFI_NIT) -->
-<!-- res_SFI_NIT_df = subset(res_SFI_NIT_df, padj < 0.15) -->
-
-<!-- res_ELI_NIT_df = as.data.frame(res_ELI_NIT) -->
-<!-- res_ELI_NIT_df = subset(res_ELI_NIT_df, padj < 0.15) -->
-
-<!-- res_ELI_SFI_df = as.data.frame(res_ELI_SFI) -->
-<!-- res_ELI_SFI_df = subset(res_ELI_SFI_df, padj < 0.15) -->
-
-<!-- library(clusterProfiler) -->
-
-<!-- ego_ELI_NIT = enrichGO(res_ELI_NIT_df$entrezid, -->
-<!--                        OrgDb = "org.Hs.eg.db", -->
-<!--                        ont = "ALL", -->
-<!--                        pAdjustMethod = "BH", -->
-<!--                        pvalueCutoff  = 0.01, -->
-<!--                        qvalueCutoff  = 0.05, -->
-<!--                        readable = TRUE) -->
-
-<!-- ego_ELI_SFI = enrichGO(res_ELI_SFI_df$entrezid, -->
-<!--                        OrgDb = "org.Hs.eg.db", -->
-<!--                        ont = "ALL", -->
-<!--                        pAdjustMethod = "BH", -->
-<!--                        pvalueCutoff  = 0.01, -->
-<!--                        qvalueCutoff  = 0.05, -->
-<!--                        readable = TRUE) -->
-
-
-
-<!-- ``` -->
-
-
-<!-- ```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'} -->
-<!-- ego_ELI_NIT = as.data.frame(ego_ELI_NIT) -->
-<!-- write.csv(ego_ELI_NIT, file = "./resultados/ego_ELI_NIT.csv",  -->
-<!--           row.names = F) -->
-
-<!-- ego_ELI_SFI = as.data.frame(ego_ELI_SFI) -->
-<!-- write.csv(ego_ELI_SFI, file = "./resultados/ego_ELI_SFI.csv",  -->
-<!--           row.names = F) -->
-<!-- ``` -->
+A partir de la matriz de conteo `counts_set` y la tabla de información de las muestras `targets_set`, se ha generado con la función `DESeqDataSetFromMatrix` el correspondiente `DESeqDataSet`, con el que comenzar el análisis.
 
+```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+library(DESeq2)
+dds = DESeqDataSetFromMatrix(countData = counts_set, colData = targets_set,
+                             design = ~ Group)
+```
+
+
+## Preprocesado de los datos
+
+### Filtraje
+
+La matriz de conteo del objeto `DESeqDataSet` puede contener muchas filas con solo ceros o muy pocos fragmentos en total, que poca información aportan en el análisis de expresión diferencial. Para reducir el tamaño del objeto y aumentar la velocidad de las funciones que se apliquen al mismo, se han eliminado las filas que no tienen recuentos, o solo un recuento único en todas las muestras.
+
+De este modo se ha pasado de 56202 a 43429 filas (genes Ensembl).
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+nrow(dds)
+dds = dds[rowSums(counts(dds)) > 1,]
+nrow(dds)
+```
+
+### Análisis exploratorio y visualización
+
+Con la finalidad de evaluar la similitud de las muestras entre grupos se han llevado a cabo los siguientes análisis:
+
+* Distacias euclideas.
+* Componentes principales (PCA).
+* Escalado multidimensional (MDS).
+
+Previamente a realizar dichos análisis, se han transformado los conteos brutos con la función `vst()` (*variance stabilizing transformation*). Estabilizar la varianza para que los datos cumplan con el principio de homocedasticidad es recomendable antes de aplicar éstos análisis multidimensionales.
+
+En la Figura \ref{fig:grafico1} podemos ver un heatmap en el cual se han representado las distancias euclidias entre muestras. Se observa la distinción entre dos grupos, uno constituido por 6 muestras ELI y otro que engloba al resto.
+
+En la Figura \ref{fig:grafico2} observamos la representación de las dos primeras componentes principales, que explican el 75 % de la varianza. Se puede ver la distinción en dos grupos como en el caso anterior, diferenciándose el grupo ELI del resto.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+vsd = vst(dds, blind = FALSE)
+```
+
+```{r grafico1, echo=FALSE, message=FALSE, warning=FALSE, results='hide',fig.cap="\\label{fig:grafico1}Diagrama heatmap de representación de las distancias euclidias entre muestras."}
+assay_vsd = t(assay(vsd))
+rownames(assay_vsd) = vsd$Group
+colnames(assay_vsd) = NULL
+assay_vsd = assay_vsd[order(row.names(assay_vsd)),]
+sampleDists = dist(assay_vsd)
+library(pheatmap)
+sampleDistMatrix = as.matrix(sampleDists)
+par ( mar = c (4 , 2 , 1 , 2 )+0.1)
+pheatmap(sampleDistMatrix,
+         clustering_distance_rows = sampleDists,
+         clustering_distance_cols = sampleDists,
+         fontsize_row = 8, fontsize_col = 8,
+         cluster_rows = T, cluster_cols = T)
+```
+
+```{r grafico2, echo=FALSE, warning=FALSE, fig.align='center', fig.width=7,fig.height=3, fig.cap="\\label{fig:grafico2}Representación de las dos primeras componentes principales."}
+library(ggplot2)
+plotPCA(vsd, intgroup = "Group")
+```
+
+Por último, en la Figura \ref{fig:grafico3} podemos observar los resultados del análisis MDS. En este caso, la distinción entre grupos no es tan marcada.
+
+```{r grafico3, echo=FALSE, warning=FALSE, fig.align='center', fig.width=7,fig.height=3, fig.cap="\\label{fig:grafico3}Gráfico resultante del escalamiento multidimensional (MDS).", message=FALSE, warning=FALSE, results='hide'}
+mdsData = data.frame(cmdscale(sampleDistMatrix))
+mds = cbind(mdsData, as.data.frame(colData(vsd)))
+ggplot(mds, aes(X1,X2,color=Group)) + geom_point(size=3)
+```
+
+
+## Identificación de genes diferencialmente expresados
+
+A partir del `DESeqDataSet` creado con los conteos brutos se ha ejecutado directamente la función `DESeq()` que ejecuta en una sola llamada el pipeline de análisis de expresión diferencial.
+
+Para extraer los resultados de cada contraste planteado (SFI-NIT, ELI-NIT y SFI-ELI) se ha utilizado la función `results()`. Para controlar el porcentaje de falsos positivos que pueden resultar del alto número de contrastes realizados simultáneamente entre genes, los p-valores se han ajustado por el método de Benjamini y Hochberg (BH) [@Benjamini1995]. 
+
+La distinción entre genes *up* o *down* regulados se ha hecho con la función `summary()` aplicada al `DESeqResults` de cada contraste.
+
+Por último, la visualización global de la expresión diferencial en cada contraste se ha llevado a cabo mediante gráficos tipo `MAplot`. Para la visualización particular de los conteos para gen más significativo en cada contraste se ha recurrido a gráficos tipo `plotCounts`.
+
+Los genes que se han considerado significativamente diferencialmente expresados en cada contraste son aquellos que presentan un fold change (FC) $\geq$ 2 (`lfcThreshold = 1`) y un p-valor $<$ 0.05. Para transformar el ratio `log2FoldChange` a valores de fold change, se ha empleado la función `logratio2foldchange` del paquete `gtools`.
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+dds = DESeq(dds, parallel =TRUE)
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+res_SFI_NIT = results(dds, contrast = c("Group", "SFI", "NIT"), alpha = 0.05,
+                      lfcThreshold = log2(2))
+res_ELI_NIT = results(dds, contrast = c("Group", "ELI", "NIT"), alpha = 0.05,
+                      lfcThreshold = log2(2))
+res_ELI_SFI = results(dds, contrast = c("Group", "ELI", "SFI"), alpha = 0.05,
+                      lfcThreshold = log2(2))
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+summary(res_SFI_NIT)
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+summary(res_ELI_NIT)
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+summary(res_ELI_SFI)
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+
+topGene_ELI_NIT = rownames(res_ELI_NIT)[which.min(res_ELI_NIT$padj)]
+plotCounts(dds, topGene_ELI_NIT, "Group", col = "red3",
+                                pch = 16)
+
+topGene_ELI_SFI = rownames(res_ELI_SFI)[which.min(res_ELI_SFI$padj)]
+plotCounts(dds, topGene_ELI_SFI, "Group", col = "red3", pch = 16)
+```
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+
+plotMA(res_ELI_NIT, ylim=c(-25,25), colSig = "red3",
+                        colLine = rgb(1,0,0,.5))
+
+plotMA(res_ELI_SFI, ylim=c(-10,10), colSig = "red3",
+                        colLine = rgb(1,0,0,.5))
+```
+
+
+## Anotación de resultados
+
+Para establecer la correspondencia entre los identificadores de Ensembl y otro tipo de identificadores del gen al que pertenecen, se ha utilizado el paquete de anotaciones `EnsDb.Hsapiens.v86`, con la función `mapIds()`. Así se han asociado con los siguientes identificadores:
+
+* *Gene Symbol*: Símbolo del gen.
+* *Entrez gene Id*: Identificador del gen en la base de datos Entrez.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+library("AnnotationDbi")
+library(EnsDb.Hsapiens.v86)
+
+res_SFI_NIT$symbol = mapIds(EnsDb.Hsapiens.v86,
+                            keys=row.names(res_SFI_NIT),
+                            column="SYMBOL",
+                            keytype="GENEID",
+                            multiVals="first")
+res_SFI_NIT$entrezid = mapIds(EnsDb.Hsapiens.v86,
+                            keys=row.names(res_SFI_NIT),
+                            column="ENTREZID",
+                            keytype="GENEID",
+                            multiVals="first")
+
+res_ELI_NIT$symbol = mapIds(EnsDb.Hsapiens.v86,
+                            keys=row.names(res_ELI_NIT),
+                            column="SYMBOL",
+                            keytype="GENEID",
+                            multiVals="first")
+res_ELI_NIT$entrezid = mapIds(EnsDb.Hsapiens.v86,
+                            keys=row.names(res_ELI_NIT),
+                            column="ENTREZID",
+                            keytype="GENEID",
+                            multiVals="first")
+
+res_ELI_SFI$symbol = mapIds(EnsDb.Hsapiens.v86,
+                            keys=row.names(res_ELI_SFI),
+                            column="SYMBOL",
+                            keytype="GENEID",
+                            multiVals="first")
+res_ELI_SFI$entrezid = mapIds(EnsDb.Hsapiens.v86,
+                            keys=row.names(res_ELI_SFI),
+                            column="ENTREZID",
+                            keytype="GENEID",
+                            multiVals="first")
+```
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+res_SFI_NIT_df = as.data.frame(res_SFI_NIT)
+res_SFI_NIT_df = subset(res_SFI_NIT_df, padj < 0.05
+                        & abs(log2FoldChange) > 1)
+res_SFI_NIT_df = res_SFI_NIT_df[order(res_SFI_NIT_df$padj),]
+
+res_ELI_NIT_df = as.data.frame(res_ELI_NIT)
+res_ELI_NIT_df = subset(res_ELI_NIT_df, padj < 0.05
+                        & abs(log2FoldChange) > 1)
+res_ELI_NIT_df = res_ELI_NIT_df[order(res_ELI_NIT_df$padj),]
+
+res_ELI_SFI_df = as.data.frame(res_ELI_SFI)
+res_ELI_SFI_df = subset(res_ELI_SFI_df, padj < 0.05
+                        & abs(log2FoldChange) > 1)
+res_ELI_SFI_df = res_ELI_SFI_df[order(res_ELI_SFI_df$padj),]
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+write.csv(res_SFI_NIT_df, file = "resultados/res_SFI_NIT_df.csv",
+          row.names = T)
+
+write.csv(res_ELI_NIT_df, file = "resultados/res_ELI_NIT_df.csv",
+          row.names = T)
+
+write.csv(res_ELI_SFI_df, file = "resultados/res_ELI_SFI_df.csv",
+          row.names = T)
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+sum(is.na(res_SFI_NIT_df$symbol))
+sum(is.na(res_SFI_NIT_df$entrezid))
+
+sum(is.na(res_ELI_NIT_df$symbol))
+sum(is.na(res_ELI_NIT_df$entrezid))
+
+sum(is.na(res_ELI_SFI_df$symbol))
+sum(is.na(res_ELI_SFI_df$entrezid))
+```
+
+
+## Búsqueda de patrones de expresión y agrupación de muestras
+
+Con el fin de conocer qué genes cambian simultáneamente entre comparaciones se han utilizado diagramas de Venn (`vennDiagram`), sin diferenciar entre genes *up* o *down* regulados.
+
+Para la búsqueda de patrones de expresión y agrupación de muestras en los 20 genes que más varían entre muestras se ha construido un heatmap con la función `pheatmap()`.
+
+## Análisis de significación biológica
+
+Por último, para el análisis de significación biológica se ha llevado a cabo un análisis de enrequecimiento bajo las categorías de Gene Ontology (funciones moleculares, procesos biológicos o componentes celulares) con el paquete `clusterProfiler` utilizando la función `enrichGO`. Como objeto `OrgDb` se ha utilizado `org.Mm.eg.db`. De esta manera, se ha podido determinar si una determinada categoría GO aparece significativamente más a menudo entre los genes diferencialmente expresados en cada contraste, con un p-valor $<$ 0.15 y sin fold change (FC) mínimo.
+
+\newpage
 
 # Resultados y discusión
 
+## Contraste SFI-NIT
+
+La comparación del grupo SFI con el grupo control NIT muestra que únicamente un gen *up* regulado está diferencialmente expresado (Tabla \ref{tab:tabla1}). El perfil de expresión diferencial se puede observar de manera global en la Figura \ref{fig:grafico4}. De manera particular observamos los conteos de dicho gen en la Figura \ref{fig:grafico5}.
+
+```{r grafico4, echo=FALSE, message=FALSE, warning=FALSE, results='hide',fig.align='center', fig.width=7,fig.height=4, fig.cap="\\label{fig:grafico4}MA plot con los genes diferencialmente expresados en el contraste SFI-NIT."}
+
+par ( mar = c (4 , 4 , 1 , 2 )+0.1)
+plotMA(res_SFI_NIT, ylim=c(-25,25), colSig = "red3",
+       colLine = rgb(1,0,0,.5))
+```
+
+```{r grafico5, echo=FALSE, message=FALSE, warning=FALSE, results='hide',fig.align='center', fig.width=7,fig.height=4, fig.cap="\\label{fig:grafico5}Count plot con el gen más significativo diferencialmente expresado en el contraste SFI-NIT."}
+
+par ( mar = c (4 , 4 , 2 , 2 )+0.1)
+topGene_SFI_NIT = rownames(res_SFI_NIT)[which.min(res_SFI_NIT$padj)]
+plotCounts(dds, topGene_SFI_NIT, "Group", col = "red3", pch = 16)
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+library(gtools)
+library(knitr)
+genenames = as.data.frame(row.names(res_SFI_NIT_df))
+topTable1 =  res_SFI_NIT_df[,c(7,8,2)]
+#FC = logratio2foldchange(res_SFI_NIT_df[,2])
+topTable1 = cbind(genenames, topTable1)
+kable(topTable1, row.names = F, col.names = c("Ensembl Id.", "Gene Symbol", "Entrez Gene Id.", "log2(FC)"), digits = 2, caption = "Genes diferencialmente expresados en el contraste SFI-NIT.\\label{tab:tabla1}")
+```
+
+## Contraste ELI-NIT
+
+## Contraste ELI-SFI
+
+## Comparativa entre contrastes
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+res_SFI_NIT_genes = row.names(res_SFI_NIT_df)
+res_ELI_NIT_genes = row.names(res_ELI_NIT_df)
+res_ELI_SFI_genes = row.names(res_ELI_SFI_df)
+
+comb = c(res_SFI_NIT_genes, res_ELI_NIT_genes, res_ELI_SFI_genes)
+
+res_SFI_NIT_genes2 = comb %in% res_SFI_NIT_genes
+res_ELI_NIT_genes2 = comb %in% res_ELI_NIT_genes
+res_ELI_SFI_genes2 = comb %in% res_ELI_SFI_genes
+
+counts_vennDiagram = cbind(res_SFI_NIT_genes2, res_ELI_NIT_genes2,
+                           res_ELI_SFI_genes2)
+
+library(limma)
+
+results_vennDiagram = vennCounts(counts_vennDiagram)
+
+for (i in 1:nrow(results_vennDiagram)) {
+  d = sum(results_vennDiagram[i,-ncol(results_vennDiagram)])
+  if (d == 0) next
+  results_vennDiagram[i,"Counts"] = results_vennDiagram[i,"Counts"] / d
+}
+
+vennDiagram(results_vennDiagram, cex = 0.9, main = "",
+            names = c("SFI vs NIT", "ELI vs NIT", "ELI vs SFI"),
+            circle.col = c("red", "blue", "green3"))
+```
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+topVarGenes = head(order(rowVars(assay(vsd)), decreasing = TRUE), 20)
+
+mat  = assay(vsd)[topVarGenes, ]
+mat  = mat - rowMeans(mat)
+colnames(mat) = targets_set$ShortName
+row.names(mat) = mapIds(EnsDb.Hsapiens.v86,
+                        keys=row.names(mat),
+                        column="SYMBOL",
+                        keytype="GENEID",
+                        multiVals="first")
+anno = as.data.frame(colData(vsd)[,"Group"])
+row.names(anno) = colnames(mat)
+colnames(anno) = "Group"
+pheatmap(mat, annotation_col = anno, cluster_rows = T, cluster_cols = T,
+         fontsize_row = 8, fontsize_col = 8)
+```
+
+
+
+## Análisis de significación biológica
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+res_SFI_NIT_df = as.data.frame(res_SFI_NIT)
+res_SFI_NIT_df = subset(res_SFI_NIT_df, padj < 0.15)
+
+res_ELI_NIT_df = as.data.frame(res_ELI_NIT)
+res_ELI_NIT_df = subset(res_ELI_NIT_df, padj < 0.15)
+
+res_ELI_SFI_df = as.data.frame(res_ELI_SFI)
+res_ELI_SFI_df = subset(res_ELI_SFI_df, padj < 0.15)
+
+library(clusterProfiler)
+
+ego_ELI_NIT = enrichGO(res_ELI_NIT_df$entrezid,
+                       OrgDb = "org.Hs.eg.db",
+                       ont = "ALL",
+                       pAdjustMethod = "BH",
+                       pvalueCutoff  = 0.01,
+                       qvalueCutoff  = 0.05,
+                       readable = TRUE)
+
+ego_ELI_SFI = enrichGO(res_ELI_SFI_df$entrezid,
+                       OrgDb = "org.Hs.eg.db",
+                       ont = "ALL",
+                       pAdjustMethod = "BH",
+                       pvalueCutoff  = 0.01,
+                       qvalueCutoff  = 0.05,
+                       readable = TRUE)
+
+
+
+```
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+ego_ELI_NIT = as.data.frame(ego_ELI_NIT)
+write.csv(ego_ELI_NIT, file = "./resultados/ego_ELI_NIT.csv",
+          row.names = F)
+
+ego_ELI_SFI = as.data.frame(ego_ELI_SFI)
+write.csv(ego_ELI_SFI, file = "./resultados/ego_ELI_SFI.csv",
+          row.names = F)
+```
+
+
+
+
+\newpage
+
 # Repositorio GitHub y código
+
+En el siguiente enlace del repositorio del proyecto en GitHub, se encuentran disponibles los datos, los resultados y todos los archivos derivados del proyecto en R:
+
+[https://github.com/edsantor/PEC_2](https://github.com/edsantor/PEC_2)
+
+Por otro lado, a continuación se muestra el código utilizado en el proceso de análisis:
+\
+```{r eval=FALSE}
+
+# Preparación de los datos
+ 
+library(DESeq2)
+dds = DESeqDataSetFromMatrix(countData = counts_set, colData = targets_set,
+                             design = ~ Group)
+
+# Filtado
+ 
+nrow(dds)
+dds = dds[rowSums(counts(dds)) > 1,]
+nrow(dds)
+
+# Análisis exploratorio y visualización
+ 
+vsd = vst(dds, blind = FALSE)
+
+assay_vsd = t(assay(vsd))
+rownames(assay_vsd) = vsd$Group
+colnames(assay_vsd) = NULL
+assay_vsd = assay_vsd[order(row.names(assay_vsd)),]
+sampleDists = dist(assay_vsd)
+library(pheatmap)
+sampleDistMatrix = as.matrix(sampleDists)
+pheatmap(sampleDistMatrix,
+         clustering_distance_rows = sampleDists,
+         clustering_distance_cols = sampleDists,
+         fontsize_row = 8, fontsize_col = 8,
+         cluster_rows = T, cluster_cols = T)
+
+plotPCA(vsd, intgroup = "Group")
+
+library(ggplot2)
+mdsData = data.frame(cmdscale(sampleDistMatrix))
+mds = cbind(mdsData, as.data.frame(colData(vsd)))
+ggplot(mds, aes(X1,X2,color=Group)) + geom_point(size=3)
+
+# Identificación de genes expresados diferencialmente
+ 
+dds = DESeq(dds, parallel =TRUE)
+
+res_SFI_NIT = results(dds, contrast = c("Group", "SFI", "NIT"), 
+                      alpha = 0.05, lfcThreshold = log2(2))
+res_ELI_NIT = results(dds, contrast = c("Group", "ELI", "NIT"), 
+                      alpha = 0.05, lfcThreshold = log2(2))
+res_ELI_SFI = results(dds, contrast = c("Group", "ELI", "SFI"), 
+                      alpha = 0.05, lfcThreshold = log2(2))
+
+summary(res_SFI_NIT)
+
+summary(res_ELI_NIT)
+
+summary(res_ELI_SFI)
+
+topGene_SFI_NIT = rownames(res_SFI_NIT)[which.min(res_SFI_NIT$padj)]
+plotCounts(dds, topGene_SFI_NIT, "Group", col = "red3", pch = 16)
+
+topGene_ELI_NIT = rownames(res_ELI_NIT)[which.min(res_ELI_NIT$padj)]
+plotCounts(dds, topGene_ELI_NIT, "Group", col = "red3", pch = 16)
+
+topGene_ELI_SFI = rownames(res_ELI_SFI)[which.min(res_ELI_SFI$padj)]
+plotCounts(dds, topGene_ELI_SFI, "Group", col = "red3", pch = 16)
+
+plotMA(res_SFI_NIT, ylim=c(25,25), colSig = "red3",
+       colLine = rgb(1,0,0,.5))
+
+plotMA(res_ELI_NIT, ylim=c(25,25), colSig = "red3",
+       colLine = rgb(1,0,0,.5))
+
+plotMA(res_ELI_SFI, ylim=c(10,10), colSig = "red3",
+       colLine = rgb(1,0,0,.5))
+
+# Anotación de resultados
+ 
+library("AnnotationDbi")
+library(EnsDb.Hsapiens.v86)
+
+res_SFI_NIT$symbol = mapIds(EnsDb.Hsapiens.v86,
+                            keys=row.names(res_SFI_NIT),
+                            column="SYMBOL",
+                            keytype="GENEID",
+                            multiVals="first")
+res_SFI_NIT$entrezid = mapIds(EnsDb.Hsapiens.v86,
+                            keys=row.names(res_SFI_NIT),
+                            column="ENTREZID",
+                            keytype="GENEID",
+                            multiVals="first")
+
+res_ELI_NIT$symbol = mapIds(EnsDb.Hsapiens.v86,
+                            keys=row.names(res_ELI_NIT),
+                            column="SYMBOL",
+                            keytype="GENEID",
+                            multiVals="first")
+res_ELI_NIT$entrezid = mapIds(EnsDb.Hsapiens.v86,
+                            keys=row.names(res_ELI_NIT),
+                            column="ENTREZID",
+                            keytype="GENEID",
+                            multiVals="first")
+
+res_ELI_SFI$symbol = mapIds(EnsDb.Hsapiens.v86,
+                            keys=row.names(res_ELI_SFI),
+                            column="SYMBOL",
+                            keytype="GENEID",
+                            multiVals="first")
+res_ELI_SFI$entrezid = mapIds(EnsDb.Hsapiens.v86,
+                            keys=row.names(res_ELI_SFI),
+                            column="ENTREZID",
+                            keytype="GENEID",
+                            multiVals="first")
+
+res_SFI_NIT_df = as.data.frame(res_SFI_NIT)
+res_SFI_NIT_df = subset(res_SFI_NIT_df, padj < 0.05
+                        & abs(log2FoldChange) > 1)
+res_SFI_NIT_df = res_SFI_NIT_df[order(res_SFI_NIT_df$padj),]
+
+res_ELI_NIT_df = as.data.frame(res_ELI_NIT)
+res_ELI_NIT_df = subset(res_ELI_NIT_df, padj < 0.05
+                        & abs(log2FoldChange) > 1)
+res_ELI_NIT_df = res_ELI_NIT_df[order(res_ELI_NIT_df$padj),]
+
+res_ELI_SFI_df = as.data.frame(res_ELI_SFI)
+res_ELI_SFI_df = subset(res_ELI_SFI_df, padj < 0.05
+                        & abs(log2FoldChange) > 1)
+res_ELI_SFI_df = res_ELI_SFI_df[order(res_ELI_SFI_df$padj),]
+
+write.csv(res_SFI_NIT_df, file = "resultados/res_SFI_NIT_df.csv",
+          row.names = T)
+
+write.csv(res_ELI_NIT_df, file = "resultados/res_ELI_NIT_df.csv",
+          row.names = T)
+
+write.csv(res_ELI_SFI_df, file = "resultados/res_ELI_SFI_df.csv",
+          row.names = T)
+
+sum(is.na(res_SFI_NIT_df$symbol))
+sum(is.na(res_SFI_NIT_df$entrezid))
+
+sum(is.na(res_ELI_NIT_df$symbol))
+sum(is.na(res_ELI_NIT_df$entrezid))
+
+sum(is.na(res_ELI_SFI_df$symbol))
+sum(is.na(res_ELI_SFI_df$entrezid))
+
+# Búsqueda de patrones de expresión y agrupación de muestras
+ 
+res_SFI_NIT_genes = row.names(res_SFI_NIT_df)
+res_ELI_NIT_genes = row.names(res_ELI_NIT_df)
+res_ELI_SFI_genes = row.names(res_ELI_SFI_df)
+
+comb = c(res_SFI_NIT_genes, res_ELI_NIT_genes, res_ELI_SFI_genes)
+
+res_SFI_NIT_genes2 = comb %in% res_SFI_NIT_genes
+res_ELI_NIT_genes2 = comb %in% res_ELI_NIT_genes
+res_ELI_SFI_genes2 = comb %in% res_ELI_SFI_genes
+
+counts_vennDiagram = cbind(res_SFI_NIT_genes2, res_ELI_NIT_genes2,
+                           res_ELI_SFI_genes2)
+
+library(limma)
+
+results_vennDiagram = vennCounts(counts_vennDiagram)
+
+for (i in 1:nrow(results_vennDiagram)) {
+  d = sum(results_vennDiagram[i,ncol(results_vennDiagram)])
+  if (d == 0) next
+  results_vennDiagram[i,"Counts"] = results_vennDiagram[i,"Counts"] / d
+}
+
+vennDiagram(results_vennDiagram, cex = 0.9, main = "",
+            names = c("SFI vs NIT", "ELI vs NIT", "ELI vs SFI"),
+            circle.col = c("red", "blue", "green3"))
+
+topVarGenes = head(order(rowVars(assay(vsd)), decreasing = TRUE), 20)
+
+mat  = assay(vsd)[topVarGenes, ]
+mat  = mat - rowMeans(mat)
+colnames(mat) = targets_set$ShortName
+row.names(mat) = mapIds(EnsDb.Hsapiens.v86,
+                        keys=row.names(mat),
+                        column="SYMBOL",
+                        keytype="GENEID",
+                        multiVals="first")
+anno = as.data.frame(colData(vsd)[,"Group"])
+row.names(anno) = colnames(mat)
+colnames(anno) = "Group"
+pheatmap(mat, annotation_col = anno, cluster_rows = T, cluster_cols = T,
+         fontsize_row = 8, fontsize_col = 8)
+
+# Análisis de significación biológica
+ 
+res_SFI_NIT_df = as.data.frame(res_SFI_NIT)
+res_SFI_NIT_df = subset(res_SFI_NIT_df, padj < 0.15)
+
+res_ELI_NIT_df = as.data.frame(res_ELI_NIT)
+res_ELI_NIT_df = subset(res_ELI_NIT_df, padj < 0.15)
+
+res_ELI_SFI_df = as.data.frame(res_ELI_SFI)
+res_ELI_SFI_df = subset(res_ELI_SFI_df, padj < 0.15)
+
+library(clusterProfiler)
+
+ego_ELI_NIT = enrichGO(res_ELI_NIT_df$entrezid,
+                       OrgDb = "org.Hs.eg.db",
+                       ont = "ALL",
+                       pAdjustMethod = "BH",
+                       pvalueCutoff  = 0.01,
+                       qvalueCutoff  = 0.05,
+                       readable = TRUE)
+
+ego_ELI_SFI = enrichGO(res_ELI_SFI_df$entrezid,
+                       OrgDb = "org.Hs.eg.db",
+                       ont = "ALL",
+                       pAdjustMethod = "BH",
+                       pvalueCutoff  = 0.01,
+                       qvalueCutoff  = 0.05,
+                       readable = TRUE)
+
+ego_ELI_NIT = as.data.frame(ego_ELI_NIT)
+write.csv(ego_ELI_NIT, file = "./resultados/ego_ELI_NIT.csv",
+          row.names = F)
+
+ego_ELI_SFI = as.data.frame(ego_ELI_SFI)
+write.csv(ego_ELI_SFI, file = "./resultados/ego_ELI_SFI.csv",
+          row.names = F)
+
+```
+
 
 \newpage
 
