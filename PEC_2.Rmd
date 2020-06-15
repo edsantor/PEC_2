@@ -23,6 +23,8 @@ knitr::opts_chunk$set(echo = TRUE)
 
 # Resumen
 
+A partir de datos de un estudio RNA-seq de análisis de tiroides que comparaba 3 tipos de infiltración, *Not infiltrated tissues* (NIT), *Small focal infiltrates* (SFI) y *Extensive lymphoid infiltrates* (ELI), se han seleccionado aleatoriamente 10 muestras por grupo para el análisis de su perfil de expresión. Así, la identificación de los genes expresados diferencialmente se ha realizado con R Bioconductor utilizando el paquete `DESeq2`. Además, se ha evaluado la significancia biológica de los contrastes a través de un análisis de enriquecimiento bajo las categorías de GO utilizando el paquete `clusterprofiler`. De esta manera, se ha observado un significativo cambio en la expresión de 624 genes en el grupo ELI con respecto al grupo control NIT. De la comparación ELI-SFI se han identificado 309 genes expresados diferencialmente.  
+
 \newpage
 
 # Datos para el análisis
@@ -250,26 +252,6 @@ summary(res_ELI_NIT)
 summary(res_ELI_SFI)
 ```
 
-```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
-
-topGene_ELI_NIT = rownames(res_ELI_NIT)[which.min(res_ELI_NIT$padj)]
-plotCounts(dds, topGene_ELI_NIT, "Group", col = "red3",
-                                pch = 16)
-
-topGene_ELI_SFI = rownames(res_ELI_SFI)[which.min(res_ELI_SFI$padj)]
-plotCounts(dds, topGene_ELI_SFI, "Group", col = "red3", pch = 16)
-```
-
-
-```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
-
-plotMA(res_ELI_NIT, ylim=c(-25,25), colSig = "red3",
-                        colLine = rgb(1,0,0,.5))
-
-plotMA(res_ELI_SFI, ylim=c(-10,10), colSig = "red3",
-                        colLine = rgb(1,0,0,.5))
-```
-
 
 ## Anotación de resultados
 
@@ -277,6 +259,8 @@ Para establecer la correspondencia entre los identificadores de Ensembl y otro t
 
 * *Gene Symbol*: Símbolo del gen.
 * *Entrez gene Id*: Identificador del gen en la base de datos Entrez.
+
+Nótese que también se han probado las bases de datos de anotación `org.Hs.eg.db` y `Homo.sapiens` siendo `EnsDb.Hsapiens.v86` la que arrojaba una menor cantidad de NAs en ambos identificadores anotados.
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
 library("AnnotationDbi")
@@ -373,7 +357,7 @@ Por último, para el análisis de significación biológica se ha llevado a cabo
 
 ## Contraste SFI-NIT
 
-La comparación del grupo SFI con el grupo control NIT muestra que únicamente un gen *up* regulado está diferencialmente expresado (Tabla \ref{tab:tabla1}). El perfil de expresión diferencial se puede observar de manera global en la Figura \ref{fig:grafico4}. De manera particular observamos los conteos de dicho gen en la Figura \ref{fig:grafico5}.
+La comparación del grupo SFI con el grupo control NIT muestra que únicamente un gen *up* regulado está diferencialmente expresado (pvalor < 0.05 y FC > 2) (Tabla \ref{tab:tabla1}). El perfil de expresión diferencial se puede observar de manera global en la Figura \ref{fig:grafico4}. De manera particular observamos los conteos de dicho gen en la Figura \ref{fig:grafico5}.
 
 ```{r grafico4, echo=FALSE, message=FALSE, warning=FALSE, results='hide',fig.align='center', fig.width=7,fig.height=4, fig.cap="\\label{fig:grafico4}MA plot con los genes diferencialmente expresados en el contraste SFI-NIT."}
 
@@ -401,12 +385,68 @@ kable(topTable1, row.names = F, col.names = c("Ensembl Id.", "Gene Symbol", "Ent
 
 ## Contraste ELI-NIT
 
+La comparación del grupo ELI con el grupo control NIT muestra un significativo cambio en el perfil de expresión, habiéndose identificado 624 genes expresados diferencialmente (pvalor < 0.05 y FC > 2), de los cuales 2 son *down* y 622 son *up* regulados. En la Tabla \ref{tab:tabla2} se encuentran los 20 primeros más significativos (consultar el repositorio GitHub para acceder al listado completo). El perfil de expresión diferencial se puede observar de manera global en la Figura \ref{fig:grafico6}.
+
+```{r grafico6, echo=FALSE, message=FALSE, warning=FALSE, results='hide',fig.align='center', fig.width=7,fig.height=4, fig.cap="\\label{fig:grafico6}MA plot con los genes diferencialmente expresados en el contraste ELI-NIT."}
+
+par ( mar = c (4 , 4 , 1 , 2 )+0.1)
+plotMA(res_ELI_NIT, ylim=c(-25,25), colSig = "red3",
+                        colLine = rgb(1,0,0,.5))
+```
+
+```{r grafico7, echo=FALSE, message=FALSE, warning=FALSE, results='hide',fig.align='center', fig.width=7,fig.height=4, fig.cap="\\label{fig:grafico5}Count plot con el gen más significativo diferencialmente expresado en el contraste SFI-NIT."}
+
+par ( mar = c (4 , 4 , 2 , 2 )+0.1)
+topGene_ELI_NIT = rownames(res_ELI_NIT)[which.min(res_ELI_NIT$padj)]
+plotCounts(dds, topGene_ELI_NIT, "Group", col = "red3",
+                                pch = 16)
+
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+genenames = as.data.frame(row.names(res_ELI_NIT_df))[1:20,]
+topTable2 =  res_ELI_NIT_df[,c(7,8,2)][1:20,]
+#FC = logratio2foldchange(res_SFI_NIT_df[,2])
+topTable2 = cbind(genenames, topTable2)
+kable(topTable2, row.names = F, col.names = c("Ensembl Id.", "Gene Symbol", "Entrez Gene Id.", "log2(FC)"), digits = 2, caption = "Genes diferencialmente expresados en el contraste ELI-NIT. Se muestran los primeros 20 más significativos.\\label{tab:tabla2}")
+```
+
+
 ## Contraste ELI-SFI
+
+El contraste de los grupos de infiltración ELI y SFI resulta en la identificación de 309 genes expresados diferencialmente (pvalor < 0.05 y FC > 2), entre los cuales 3 son *down* y 306 son *up* regulados. En la Tabla \ref{tab:tabla3} se encuentran los 20 primeros más significativos (consultar el repositorio GitHub para acceder al listado completo). El perfil de expresión diferencial se puede observar de manera global en la Figura \ref{fig:grafico8}. Nótese que el gen más significativo de este contraste MIR142, también lo es en el contraste anterior ELI-NIT (Figura \ref{fig:grafico9}).
+
+```{r grafico8, echo=FALSE, message=FALSE, warning=FALSE, results='hide',fig.align='center', fig.width=7,fig.height=4, fig.cap="\\label{fig:grafico8}MA plot con los genes diferencialmente expresados en el contraste ELI-SFI."}
+
+par ( mar = c (4 , 4 , 1 , 2 )+0.1)
+plotMA(res_ELI_SFI, ylim=c(-10,10), colSig = "red3",
+                        colLine = rgb(1,0,0,.5))
+```
+
+```{r grafico9, echo=FALSE, message=FALSE, warning=FALSE, results='hide',fig.align='center', fig.width=7,fig.height=4, fig.cap="\\label{fig:grafico9}Count plot con el gen más significativo diferencialmente expresado en el contraste ELI-SFI."}
+
+par ( mar = c (4 , 4 , 2 , 2 )+0.1)
+topGene_ELI_SFI = rownames(res_ELI_SFI)[which.min(res_ELI_SFI$padj)]
+plotCounts(dds, topGene_ELI_SFI, "Group", col = "red3", pch = 16)
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+genenames = as.data.frame(row.names(res_ELI_SFI_df))[1:20,]
+topTable3 =  res_ELI_SFI_df[,c(7,8,2)][1:20,]
+#FC = logratio2foldchange(res_SFI_NIT_df[,2])
+topTable3 = cbind(genenames, topTable3)
+kable(topTable3, row.names = F, col.names = c("Ensembl Id.", "Gene Symbol", "Entrez Gene Id.", "log2(FC)"), digits = 2, caption = "Genes diferencialmente expresados en el contraste ELI-SFI. Se muestran los primeros 20 más significativos.\\label{tab:tabla3}")
+```
 
 ## Comparativa entre contrastes
 
+Analizando el diagrama de Venn de la Figura \ref{fig:grafico10}, en el cual se comparan entre sí los tres contrastes realizados, vemos que existen 266 genes comunes entre las comparaciones ELI-NIT y ELI-SFI. Por otro lado, se confirma que el único gen significativo identificado en el contraste SFI-NIT esta presente también en la comparación ELI-NIT.
 
-```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+Por otro lado, en la Figura \ref{fig:grafico11} se pueden observar en un heatmap los 20 genes de `count_set` que más varían entre las 30 muestras estudiadas. Así se desprende que las muestras se agrupan en 2 grupos, uno compuesto principalmente por las muestras ELI, y el otro por el resto. En cuanto a los perfiles de expresión de los genes, se puede destacar el gen CALCA (codificante de la Calcitonina) que presenta una fuerte variación por encima de la media muestral en 3 muestras SFI y 1 NIT, variando muy poco con respecto de la media muestral en el resto de muestras. En el otro extremo se observa que el gen IGHG1 (codificante de una inmunoglobulina) presenta una fuerte variación por debajo de la media muestral, respecto a su expresión en el resto de muestras, en 3 muestras NIT y 1 SFI.
+
+```{r grafico10, echo=FALSE, message=FALSE, warning=FALSE, results='hide',fig.align='center', fig.width=7,fig.height=4, fig.cap="\\label{fig:grafico10}Diagrama de Venn con los genes diferencialmente expresados entre los contrastes SFI-NIT, ELI-NIT y ELI-SFI."}
+
+par ( mai = c (0 , 0 , 0 , 0 )+0.1)
 res_SFI_NIT_genes = row.names(res_SFI_NIT_df)
 res_ELI_NIT_genes = row.names(res_ELI_NIT_df)
 res_ELI_SFI_genes = row.names(res_ELI_SFI_df)
@@ -436,7 +476,8 @@ vennDiagram(results_vennDiagram, cex = 0.9, main = "",
 ```
 
 
-```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+```{r grafico11, echo=FALSE, message=FALSE, warning=FALSE, results='hide',fig.cap="\\label{fig:grafico11}Diagrama heatmap de representación de los 20 genes que más variación presentan entre muestras. Los identificadores de las muestras se corresponden con su ShortName."}
+
 topVarGenes = head(order(rowVars(assay(vsd)), decreasing = TRUE), 20)
 
 mat  = assay(vsd)[topVarGenes, ]
@@ -456,8 +497,11 @@ pheatmap(mat, annotation_col = anno, cluster_rows = T, cluster_cols = T,
 
 
 
-## Análisis de significación biológica
+## Significación biológica
 
+Tras el análisis de enriquecimiento realizado, bajo las categorías de GO, en cada una de las comparaciones significativas realizadas (ELI-NIT y ELI-SFI), se muestran las primeras cinco categorías ordenadas por su significancia en las Tablas \ref{tab:tabla4} y \ref{tab:tabla5}. Para observar el resto de entradas en cada tabla, acúdase a los archivos CSV del repositorio.
+
+Nótese que a pesar de relajar las condiciones de significancia (pvalor < 0.15 sin FC mínimo) únicamente 2 genes han resultado significativos en el contraste SFI-NIT, por lo que no se ha realizado su análisis de enriquecimiento.
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
 res_SFI_NIT_df = as.data.frame(res_SFI_NIT)
@@ -502,7 +546,15 @@ write.csv(ego_ELI_SFI, file = "./resultados/ego_ELI_SFI.csv",
           row.names = F)
 ```
 
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+egoTable = ego_ELI_NIT[1:5,c(2,3,4)]
+kable(egoTable, row.names = F, col.names = c("GO Id.","Descripción", "Gene ratio"),align = c("l","l","r"), caption = "Primeras cinco categorías de GO más significativas resultantes del análisis de enriquecimiento en el contraste ELI-NIT.\\label{tab:tabla4}")
+```
 
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+egoTable = ego_ELI_SFI[1:5,c(2,3,4)]
+kable(egoTable, row.names = F, col.names = c("GO Id.","Descripción", "Gene ratio"),align = c("l","l","r"), caption = "Primeras cinco categorías de GO más significativas resultantes del análisis de enriquecimiento en el contraste ELI-SFI.\\label{tab:tabla5}")
+```
 
 
 \newpage
